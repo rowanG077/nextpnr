@@ -32,6 +32,8 @@ NEXTPNR_NAMESPACE_BEGIN
 
 TimingAnalyser::TimingAnalyser(Context *ctx) : ctx(ctx)
 {
+    clk_period_weight = ctx->setting<bool>("tmg/clk-period-weight", false);
+
     ClockDomainKey key{IdString(), ClockEdge::RISING_EDGE};
     domain_to_id.emplace(key, 0);
     domains.emplace_back(key);
@@ -45,6 +47,7 @@ void TimingAnalyser::setup(bool update_net_timings, bool update_histogram, bool 
     topo_sort();
     setup_port_domains();
     identify_related_domains();
+    compute_domain_weights();
     run(update_net_timings, update_histogram, update_crit_paths, true);
 }
 
@@ -76,6 +79,60 @@ void TimingAnalyser::run(bool update_net_timings, bool update_histogram, bool up
 
     if (update_crit_paths) {
         build_crit_path_reports();
+    }
+}
+
+void TimingAnalyser::compute_domain_weights() {
+    const float dom_weight_influence = 0.80;
+    const float base_weight = 1.0f - dom_weight_influence;
+
+    // Set default weight to 1.0
+    for (domain_id_t dp_id = 0; dp_id < domain_id_t(domain_pairs.size()); ++dp_id) {
+        domain_pair_weight[dp_id] = 1.0f;
+    }
+
+    float fastest_clk_period = std::numeric_limits<float>::max();
+    float slowest_clk_period = std::numeric_limits<float>::min();
+
+    bool found_constr = false;
+    for (domain_id_t dom_id = 0; dom_id < domain_id_t(domains.size()); ++dom_id) {
+        IdString clk = domains.at(dom_id).key.clock;
+        if (ctx->nets.count(clk)) {
+            NetInfo *clk_net = ctx->nets.at(clk).get();
+            if (clk_net->clkconstr) {
+                delay_t period = clk_net->clkconstr->period.minDelay();
+                domain_periods[dom_id] = period;
+                found_constr = true;
+                float period_ns = ctx->getDelayNS(period);
+                fastest_clk_period = std::min(period_ns, fastest_clk_period);
+                slowest_clk_period = std::max(period_ns, slowest_clk_period);
+            }
+        }
+    }
+
+    if (!found_constr || slowest_clk_period == fastest_clk_period)
+        return;
+
+    float fast_slow_delta = slowest_clk_period - fastest_clk_period;
+
+    for (domain_id_t dp_id = 0; dp_id < domain_id_t(domain_pairs.size()); ++dp_id) {
+        auto &dp = domain_pairs.at(dp_id).key;
+
+        float weight = 0.0f;
+        if (domain_periods.count(dp.launch)) {
+            float period = ctx->getDelayNS(domain_periods.at(dp.launch));
+            weight = (slowest_clk_period - period) / fast_slow_delta;
+        }
+
+        if (domain_periods.count(dp.capture)) {
+            float period = ctx->getDelayNS(domain_periods.at(dp.capture));
+            float capture_weight = (slowest_clk_period - period) / fast_slow_delta;
+            weight = std::max(weight, capture_weight);
+        }
+
+        weight = base_weight + dom_weight_influence * weight;
+
+        domain_pair_weight[dp_id] = weight;
     }
 }
 
@@ -729,6 +786,23 @@ void TimingAnalyser::compute_criticality()
 
             float crit =
                     1.0f - (float(pdp.second.setup_slack) - float(dp.worst_setup_slack)) / float(-dp.worst_setup_slack);
+
+            // Maybe try fully period driven??:
+            // if (clk_period_weight && dp.key.launch == dp.key.capture && domain_periods.count(dp.key.capture)) {
+            //     float period_ns = ctx->getDelayNS(domain_periods.at(dp.key.capture));
+            //     auto delay = ctx->getDelayNS(-pdp.second.setup_slack);
+            //     float off_min = 3.0f;
+            //     float off_max = 1.0f;
+            //     float criticality_range = off_min +
+            //     auto off = std::min(std::max(period_ns + off_max - delay, 0.0f), criticality_range) /
+            //     crit = 1.0f - off;
+            // }
+
+            if (clk_period_weight) {
+                float dom_weight = domain_pair_weight.at(pdp.first);
+                crit = dom_weight * crit;
+            }
+
             crit = std::min(crit, 1.0f);
             crit = std::max(crit, 0.0f);
             pdp.second.criticality = crit;

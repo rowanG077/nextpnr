@@ -103,6 +103,7 @@ struct TimingAnalyser
     bool updated_domains = false;
 
   private:
+    void compute_domain_weights();
     void init_ports();
     void get_cell_delays();
     void get_route_delays();
@@ -196,6 +197,7 @@ struct TimingAnalyser
         float worst_crit = 0;
         delay_t worst_setup_slack = std::numeric_limits<delay_t>::max(),
                 worst_hold_slack = std::numeric_limits<delay_t>::max();
+
     };
 
     struct PerDomain
@@ -223,12 +225,15 @@ struct TimingAnalyser
 
     void copy_domains(const CellPortKey &from, const CellPortKey &to, bool backwards);
 
+    bool clk_period_weight;
     dict<CellPortKey, PerPort> ports;
     dict<ClockDomainKey, domain_id_t> domain_to_id;
     dict<ClockDomainPairKey, domain_id_t> pair_to_id;
     std::vector<PerDomain> domains;
     std::vector<PerDomainPair> domain_pairs;
     dict<std::pair<IdString, IdString>, delay_t> clock_delays;
+    dict<domain_id_t, delay_t> domain_periods;
+    dict<domain_id_t, float> domain_pair_weight;
 
     std::vector<CellPortKey> topological_order;
 

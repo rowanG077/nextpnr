@@ -207,6 +207,7 @@ po::options_description CommandHandler::getGeneralOptions()
                           "prefix for router2 resource congestion heatmaps");
 
     general.add_options()("tmg-ripup", "enable experimental timing-driven ripup in router");
+    general.add_options()("tmg-clk-period-weight", "enable experimental clock period based criticality adjustment");
     general.add_options()("router2-tmg-ripup",
                           "enable experimental timing-driven ripup in router (deprecated; use --tmg-ripup instead)");
 
@@ -347,6 +348,8 @@ void CommandHandler::setupContext(Context *ctx)
 
     if (vm.count("router2-heatmap"))
         ctx->settings[ctx->id("router2/heatmap")] = vm["router2-heatmap"].as<std::string>();
+    if (vm.count("tmg-clk-period-weight"))
+        ctx->settings[ctx->id("tmg/clk-period-weight")] = true;
     if (vm.count("tmg-ripup") || vm.count("router2-tmg-ripup"))
         ctx->settings[ctx->id("router/tmg_ripup")] = true;
 
