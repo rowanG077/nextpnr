@@ -80,8 +80,8 @@ struct SdcEntity
 
 struct SdcValue
 {
-    SdcValue(const std::string &s) : is_string(true), str(s) {};
-    SdcValue(const std::vector<SdcEntity> &l) : is_string(false), list(l) {};
+    SdcValue(const std::string &s) : is_string(true), str(s){};
+    SdcValue(const std::vector<SdcEntity> &l) : is_string(false), list(l){};
 
     bool is_string;
     std::string str;             // simple string value
@@ -95,7 +95,7 @@ struct SDCParser
     int lineno = 1;
     Context *ctx;
 
-    SDCParser(const std::string &buf, Context *ctx) : buf(buf), ctx(ctx) {};
+    SDCParser(const std::string &buf, Context *ctx) : buf(buf), ctx(ctx){};
 
     inline bool eof() const { return pos == int(buf.size()); }
 
@@ -376,7 +376,7 @@ struct SDCParser
             if (arg.is_string) {
                 std::string s = arg.str;
 
-                bool is_from = true;
+                bool idsadass_from = true;
                 if (s == "-to") {
                     is_from = false;
                 } else if (s != "-from") {
